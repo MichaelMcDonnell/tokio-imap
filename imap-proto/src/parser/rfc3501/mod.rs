@@ -260,8 +260,8 @@ fn mailbox_list(i: &[u8]) -> IResult<&[u8], (Vec<Cow<str>>, Option<&str>, &str)>
 fn mailbox_data_list(i: &[u8]) -> IResult<&[u8], MailboxDatum> {
     map(preceded(tag_no_case("LIST "), mailbox_list), |data| {
         MailboxDatum::List {
-            flags: data.0,
-            delimiter: data.1.map(Cow::Borrowed),
+            name_attributes: data.0,
+            hierarchy_delimiter: data.1.map(Cow::Borrowed),
             name: Cow::Borrowed(data.2),
         }
     })(i)
@@ -270,8 +270,8 @@ fn mailbox_data_list(i: &[u8]) -> IResult<&[u8], MailboxDatum> {
 fn mailbox_data_lsub(i: &[u8]) -> IResult<&[u8], MailboxDatum> {
     map(preceded(tag_no_case("LSUB "), mailbox_list), |data| {
         MailboxDatum::List {
-            flags: data.0,
-            delimiter: data.1.map(Cow::Borrowed),
+            name_attributes: data.0,
+            hierarchy_delimiter: data.1.map(Cow::Borrowed),
             name: Cow::Borrowed(data.2),
         }
     })(i)

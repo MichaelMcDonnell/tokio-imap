@@ -201,8 +201,8 @@ pub enum MailboxDatum<'a> {
     Exists(u32),
     Flags(Vec<Cow<'a, str>>),
     List {
-        flags: Vec<Cow<'a, str>>,
-        delimiter: Option<Cow<'a, str>>,
+        name_attributes: Vec<Cow<'a, str>>,
+        hierarchy_delimiter: Option<Cow<'a, str>>,
         name: Cow<'a, str>,
     },
     Search(Vec<u32>),
@@ -230,12 +230,12 @@ impl<'a> MailboxDatum<'a> {
                 MailboxDatum::Flags(flags.into_iter().map(to_owned_cow).collect())
             }
             MailboxDatum::List {
-                flags,
-                delimiter,
+                name_attributes,
+                hierarchy_delimiter,
                 name,
             } => MailboxDatum::List {
-                flags: flags.into_iter().map(to_owned_cow).collect(),
-                delimiter: delimiter.map(to_owned_cow),
+                name_attributes: name_attributes.into_iter().map(to_owned_cow).collect(),
+                hierarchy_delimiter: hierarchy_delimiter.map(to_owned_cow),
                 name: to_owned_cow(name),
             },
             MailboxDatum::Search(seqs) => MailboxDatum::Search(seqs),
