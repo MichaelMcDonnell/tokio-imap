@@ -6,7 +6,16 @@ use std::num::NonZeroUsize;
 #[test]
 fn test_mailbox_data_response() {
     match parse_response(b"* LIST (\\HasNoChildren) \".\" INBOX.Tests\r\n") {
-        Ok((_, Response::MailboxData(_))) => {}
+        Ok((_, Response::MailboxData(mailbox_datum))) => {
+            assert_eq!(
+                mailbox_datum,
+                MailboxDatum::List {
+                    flags: vec![Cow::Borrowed("\\HasNoChildren")],
+                    delimiter: Some(Cow::Borrowed(".")),
+                    name: Cow::Borrowed("INBOX.Tests"),
+                }
+            );
+        }
         rsp => panic!("unexpected response {:?}", rsp),
     }
 }
