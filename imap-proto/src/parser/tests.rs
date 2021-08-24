@@ -11,6 +11,83 @@ fn test_mailbox_data_response() {
     }
 }
 
+/// Test that the name attributes in [RFC 3501 Section 7.2.2](https://datatracker.ietf.org/doc/html/rfc3501#section-7.2.2)
+/// can be parsed.
+#[test]
+fn test_rfc_3501_name_attributes() {
+    match parse_response(
+        b"* LIST (\\Noinferiors \\Noselect \\Marked \\Unmarked) \".\" INBOX.Tests\r\n",
+    ) {
+        Ok((
+            _,
+            Response::MailboxData(MailboxDatum::List {
+                name_attributes, ..
+            }),
+        )) => {
+            assert_eq!(
+                name_attributes,
+                vec![
+                    NameAttribute::NoInferiors,
+                    NameAttribute::NoSelect,
+                    NameAttribute::Marked,
+                    NameAttribute::Unmarked
+                ]
+            );
+        }
+        rsp => panic!("unexpected response {:?}", rsp),
+    }
+}
+
+/// Test that if a name attribute from [RFC 3501 Section 7.2.2](https://datatracker.ietf.org/doc/html/rfc3501#section-7.2.2)
+/// is not recognized then it is treated as an extension.
+#[test]
+fn test_name_attribute_extension() {
+    match parse_response(b"* LIST (\\Notdefined) \".\" INBOX.Tests\r\n") {
+        Ok((
+            _,
+            Response::MailboxData(MailboxDatum::List {
+                name_attributes, ..
+            }),
+        )) => {
+            assert_eq!(
+                name_attributes,
+                vec![NameAttribute::Extension(Cow::Borrowed("\\Notdefined"))]
+            );
+        }
+        rsp => panic!("unexpected response {:?}", rsp),
+    }
+}
+
+/// Test that the special-use mailbox name attributes in [RFC 6154 section 2](https://datatracker.ietf.org/doc/html/rfc6154#section-2)
+/// can be parsed.
+#[test]
+fn test_rfc_6154_name_attributes() {
+    match parse_response(
+        b"* LIST (\\All \\Archive \\Drafts \\Flagged \\Junk \\Sent \\Trash) \".\" INBOX.Tests\r\n",
+    ) {
+        Ok((
+            _,
+            Response::MailboxData(MailboxDatum::List {
+                name_attributes, ..
+            }),
+        )) => {
+            assert_eq!(
+                name_attributes,
+                vec![
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::All),
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::Archive),
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::Drafts),
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::Flagged),
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::Junk),
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::Sent),
+                    NameAttribute::SpecialUseMailbox(SpecialUseMailbox::Trash),
+                ]
+            );
+        }
+        rsp => panic!("unexpected response {:?}", rsp),
+    }
+}
+
 #[test]
 fn test_number_overflow() {
     match parse_response(b"* 2222222222222222222222222222222222222222222C\r\n") {

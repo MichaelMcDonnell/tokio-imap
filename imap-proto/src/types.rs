@@ -200,9 +200,27 @@ pub struct Metadata {
 pub enum MailboxDatum<'a> {
     Exists(u32),
     Flags(Vec<Cow<'a, str>>),
+    /// The `List` enum struct stores the data from the LIST Response defined in
+    /// [RFC 3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2).
     List {
-        flags: Vec<Cow<'a, str>>,
-        delimiter: Option<Cow<'a, str>>,
+        /// There are four name attributes defined in [rcf3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2).
+        /// See the [NameAttribute] enum for details.
+        name_attributes: Vec<NameAttribute<'a>>,
+        /// From [rcf3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2):
+        ///
+        /// > The hierarchy delimiter is a character used to delimit levels of
+        /// > hierarchy in a mailbox name.  A client can use it to create child
+        /// > mailboxes, and to search higher or lower levels of naming
+        /// > hierarchy.  All children of a top-level hierarchy node MUST use
+        /// > the same separator character.  A NIL hierarchy delimiter means
+        /// > that no hierarchy exists; the name is a "flat" name.
+        hierarchy_delimiter: Option<Cow<'a, str>>,
+        /// From [rcf3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2):
+        ///
+        /// > The name represents an unambiguous left-to-right hierarchy, and
+        /// > MUST be valid for use as a reference in LIST and LSUB commands.
+        /// > Unless \Noselect is indicated, the name MUST also be valid as an
+        /// > argument for commands, such as SELECT, that accept mailbox names.
         name: Cow<'a, str>,
     },
     Search(Vec<u32>),
@@ -230,12 +248,12 @@ impl<'a> MailboxDatum<'a> {
                 MailboxDatum::Flags(flags.into_iter().map(to_owned_cow).collect())
             }
             MailboxDatum::List {
-                flags,
-                delimiter,
+                name_attributes,
+                hierarchy_delimiter,
                 name,
             } => MailboxDatum::List {
-                flags: flags.into_iter().map(to_owned_cow).collect(),
-                delimiter: delimiter.map(to_owned_cow),
+                name_attributes: name_attributes.into_iter().map(|named_attribute| named_attribute.into_owned()).collect(),
+                hierarchy_delimiter: hierarchy_delimiter.map(to_owned_cow),
                 name: to_owned_cow(name),
             },
             MailboxDatum::Search(seqs) => MailboxDatum::Search(seqs),
@@ -562,7 +580,7 @@ fn body_param_owned<'a>(v: BodyParams<'a>) -> BodyParams<'static> {
 
 /// An RFC 2822 envelope
 ///
-/// See https://datatracker.ietf.org/doc/html/rfc2822#section-3.6 for more details.
+/// See https://tools.ietf.org/doc/html/rfc2822#section-3.6 for more details.
 #[derive(Debug, Eq, PartialEq)]
 pub struct Envelope<'a> {
     pub date: Option<Cow<'a, [u8]>>,
@@ -709,6 +727,118 @@ impl<'a> BodyExtMPart<'a> {
             extension: self.extension.map(|v| v.into_owned()),
         }
     }
+}
+
+/// The name attributes are returned as part of a LIST response described in
+/// [RFC 3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2).
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum NameAttribute<'a> {
+    /// From [RFC 3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2):
+    ///
+    /// > It is not possible for any child levels of hierarchy to exist
+    /// > under this name; no child levels exist now and none can be
+    /// > created in the future.
+    NoInferiors,
+    /// From [RFC 3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2):
+    ///
+    /// > It is not possible to use this name as a selectable mailbox.
+    NoSelect,
+    /// From [RFC 3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2):
+    ///
+    /// > The mailbox has been marked "interesting" by the server; the
+    /// > mailbox probably contains messages that have been added since
+    /// > the last time the mailbox was selected.
+    Marked,
+    /// From [RFC 3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2):
+    ///
+    /// > The mailbox does not contain any additional messages since the
+    /// > last time the mailbox was selected.
+    Unmarked,
+    /// A special-use mailbox as defined in [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2).
+    SpecialUseMailbox(SpecialUseMailbox),
+    /// A name attribute not defined in [rcf3501 section 7.2.2](https://tools.ietf.org/doc/html/rfc3501#section-7.2.2)
+    /// or any supported extension.
+    Extension(Cow<'a, str>),
+}
+
+impl<'a> NameAttribute<'a> {
+    pub fn into_owned(self) -> NameAttribute<'static> {
+        match self {
+            NameAttribute::NoInferiors => NameAttribute::NoInferiors,
+            NameAttribute::NoSelect => NameAttribute::NoSelect,
+            NameAttribute::Marked => NameAttribute::Marked,
+            NameAttribute::Unmarked => NameAttribute::Unmarked,
+            NameAttribute::SpecialUseMailbox(x) => NameAttribute::SpecialUseMailbox(x),
+            NameAttribute::Extension(s) => NameAttribute::Extension(to_owned_cow(s)),
+        }
+    }
+}
+
+/// The special-use mailboxes are defined in [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2).
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum SpecialUseMailbox {
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2):
+    ///
+    /// > This mailbox presents all messages in the user's message store.
+    /// > Implementations MAY omit some messages, such as, perhaps, those
+    /// > in \Trash and \Junk.  When this special use is supported, it is
+    /// > almost certain to represent a virtual mailbox.
+    All,
+
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2):
+    ///
+    /// > This mailbox is used to archive messages.  The meaning of an
+    /// > "archival" mailbox is server-dependent; typically, it will be
+    /// > used to get messages out of the inbox, or otherwise keep them
+    /// > out of the user's way, while still making them accessible.
+    Archive,
+
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2):
+    ///
+    /// > This mailbox is used to hold draft messages -- typically,
+    /// > messages that are being composed but have not yet been sent.  In
+    /// > some server implementations, this might be a virtual mailbox,
+    /// > containing messages from other mailboxes that are marked with
+    /// > the "\Draft" message flag.  Alternatively, this might just be
+    /// > advice that a client put drafts here.
+    Drafts,
+
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2):
+    ///
+    /// > This mailbox presents all messages marked in some way as
+    /// > "important".  When this special use is supported, it is likely
+    /// > to represent a virtual mailbox collecting messages (from other
+    /// > mailboxes) that are marked with the "\Flagged" message flag.
+    Flagged,
+
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2):
+    ///
+    /// > This mailbox is where messages deemed to be junk mail are held.
+    /// > Some server implementations might put messages here
+    /// > automatically.  Alternatively, this might just be advice to a
+    /// > client-side spam filter.
+    Junk,
+
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2):
+    ///
+    /// > This mailbox is used to hold copies of messages that have been
+    /// > sent.  Some server implementations might put messages here
+    /// > automatically.  Alternatively, this might just be advice that a
+    /// > client save sent messages here.
+    Sent,
+
+    /// From [RFC 6154 section 2](https://tools.ietf.org/doc/html/rfc6154#section-2)
+    ///
+    /// > This mailbox is used to hold messages that have been deleted or
+    /// > marked for deletion.  In some server implementations, this might
+    /// > be a virtual mailbox, containing messages from other mailboxes
+    /// > that are marked with the "\Deleted" message flag.
+    /// > Alternatively, this might just be advice that a client that
+    /// > chooses not to use the IMAP "\Deleted" model should use this as
+    /// > its trash location.  In server implementations that strictly
+    /// > expect the IMAP "\Deleted" model, this special use is likely not
+    /// > to be supported.
+    Trash,
 }
 
 // IMAP4 QUOTA extension (rfc2087)
